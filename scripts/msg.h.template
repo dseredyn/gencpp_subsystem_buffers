@@ -42,6 +42,9 @@ cpp_msg_definition = gencpp.escape_message_definition(msg_definition)
 #include <ros/builtin_message_traits.h>
 #include <ros/message_operations.h>
 
+#include "rtt/RTT.hpp"
+#include "common_interfaces/interface_ports.h"
+
 @##############################
 @# Includes for dependencies
 @##############################
@@ -56,8 +59,12 @@ for field in spec.parsed_fields():
       print('#include <%s/%s.h>'%(package, name))
 }@
 
+@('\n'.join(gencpp.generate_additional_includes(spec)))@
+
+
 namespace @(spec.package)
 {
+
 template <class ContainerAllocator>
 struct @(spec.short_name)_
 {
@@ -102,6 +109,43 @@ struct @(spec.short_name)_
 
 @# Typedef of template instance using std::allocator
 typedef @(cpp_full_name)<std::allocator<void> > @(spec.short_name);
+
+template <template <typename Type> class T>
+class @(spec.short_name)_Ports : public interface_ports::PortInterface<@(spec.short_name) > {
+public:
+    typedef @(spec.short_name) Container_;
+
+  @('\n  '.join(gencpp.generate_member_list(spec)))@
+
+    @(spec.short_name)_Ports(RTT::TaskContext &tc, const std::string& prefix="@(spec.short_name)")
+@('\n    '.join(gencpp.generate_ports_initializer_list(spec)))@
+
+    {
+    }
+
+    virtual bool readPorts() {
+        bool result = true;
+@('\n    '.join(gencpp.generate_read_ports_list(spec)))@
+
+        return result;
+    }
+
+    virtual bool writePorts() {
+@('\n    '.join(gencpp.generate_write_ports_list(spec)))@
+
+        return true;
+    }
+
+    virtual void convertFromROS(const @(spec.short_name)& ros) {
+@('\n    '.join(gencpp.generate_convert_from_ros_list(spec)))@
+
+    }
+
+    virtual void convertToROS(@(spec.short_name)& ros) {
+  @('\n    '.join(gencpp.generate_convert_to_ros_list(spec)))@
+
+    }
+};
 
 @# Shared pointer typedefs
 typedef boost::shared_ptr< @(cpp_namespace+spec.short_name) > @(spec.short_name)Ptr;

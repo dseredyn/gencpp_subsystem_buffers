@@ -31,6 +31,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import genmsg.msgs
+import genmsg.msg_loader
 
 try:
     from cStringIO import StringIO #Python 2.x
@@ -71,17 +72,22 @@ def msg_type_to_cpp(type):
         cpp_type = MSG_TYPE_TO_CPP[base_type]
     elif (len(base_type.split('/')) == 1):
         if (genmsg.msgs.is_header_type(base_type)):
-            cpp_type = ' ::std_msgs::Header_<ContainerAllocator> '
+#            cpp_type = ' ::std_msgs::Header_<ContainerAllocator> '
+            cpp_type = ' ::std_msgs::Header '
         else:
-            cpp_type = '%s_<ContainerAllocator> '%(base_type)
+#            cpp_type = '%s_<ContainerAllocator> '%(base_type)
+            cpp_type = '%s '%(base_type)
     else:
         pkg = base_type.split('/')[0]
         msg = base_type.split('/')[1]
-        cpp_type = ' ::%s::%s_<ContainerAllocator> '%(pkg, msg)
+#        cpp_type = ' ::%s::%s_<ContainerAllocator> '%(pkg, msg)
+        cpp_type = ' ::%s::%s '%(pkg, msg)
 
     if (is_array):
         if (array_len is None):
-            return 'std::vector<%s, typename ContainerAllocator::template rebind<%s>::other > '%(cpp_type, cpp_type)
+            raise
+#            return 'std::vector<%s, typename ContainerAllocator::template rebind<%s>::other > '%(cpp_type, cpp_type)
+#            return 'std::vector<%s, typename ContainerAllocator::template rebind<%s>::other > '%(cpp_type, cpp_type)
         else:
             return 'boost::array<%s, %s> '%(cpp_type, array_len)
     else:
@@ -252,3 +258,185 @@ def generate_initializer_list(spec, container_gets_allocator):
             else:
                 yield '  %s %s(%s)'%(op, field.name, val)
         op = ','
+
+
+#
+# code added for subsystem_buffers
+#
+
+def parse_comment_to_subsystem_buffer_spec(comment):
+    id_str = 'subsystem_buffer{'
+
+    pos_beg = comment.find(id_str)
+    if pos_beg < 0:
+        return None
+
+    pos_end = comment.find('}', pos_beg)
+    if pos_end < 0:
+        # subsystem_buffer declaration must be complete
+        return None
+
+    decl = comment[pos_beg + len(id_str) : pos_end]
+    decl_list = decl.split(';')
+
+    decl_dict = {}
+    for item in decl_list:
+        pos = item.find(':')
+        if pos < 0:
+            continue
+        decl_dict[item[:pos].strip()] = item[pos+1:].strip()
+
+    if not 'type' in decl_dict:
+        return None
+    type = decl_dict['type']
+
+    validity_field_name = ''
+    if 'validity' in decl_dict:
+        validity_field_name = decl_dict['validity']
+
+#    if type == 'container' and len(decl_list) == 2:
+#        validity_field_name = decl_list[1].strip()
+#        return (port_type, validity_field_name)
+    data_type = ''
+    if type == 'port':
+        if not 'data_type' in decl_dict:
+            return None
+        data_type = decl_dict['data_type']
+
+    includes = []
+    if 'includes' in decl_dict:
+        for inc in decl_dict['includes'].split(','):
+            includes.append(inc.strip())
+
+#        internal_type_name = decl_list[1].strip()
+#        validity_field_name = decl_list[2].strip()
+#        return (port_type, internal_type_name, validity_field_name)
+
+    return (type, validity_field_name, data_type, includes)
+
+def get_port_spec_dict(spec):
+    port_spec_dict = {}
+    # process msg declaration line by line, search for port_spec
+    for line in spec.text.splitlines():
+        comment_start = line.find('#')
+        if comment_start <= 0:
+            continue
+        declaration = line[:comment_start-1]
+        comment = line[comment_start:]
+        success = True
+        try:
+            field_type, name = genmsg.msg_loader._load_field_line(declaration, spec.package)
+        except:
+            success = False
+        if success:
+            port_spec = parse_comment_to_subsystem_buffer_spec(comment)
+            if port_spec != None:
+                port_spec_dict[name] = port_spec
+
+    return port_spec_dict
+
+def generate_additional_includes(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+    includes = []
+    for name in port_spec_dict:
+        includes = includes + port_spec_dict[name][3]
+    for inc in includes:
+        yield '#include %s'%(inc)
+
+def generate_member_list(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            if port_spec[0] == 'container':
+                if field.is_builtin:
+                    raise
+                yield '  %s_Ports<T > %s_;'%(msg_type_to_cpp(field.type)[:-1], field.name)
+                yield '  bool %s_valid_;'%(field.name)
+            elif port_spec[0] == 'port':
+                yield '  interface_ports::Port<T, %s, Container_::_%s_type > %s_;'%(msg_type_to_cpp(port_spec[2]), field.name, field.name)
+                yield '  bool %s_valid_;'%(field.name)
+
+def generate_ports_initializer_list(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+    op = ':'
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            yield '    %s %s_(tc, prefix + \"_%s\")'%(op, field.name, field.name)
+            op = ','
+            yield '    %s %s_valid_(false)'%(op, field.name)
+
+def generate_read_ports_list(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            validity_field = port_spec[1]
+            if validity_field:
+                yield '  %s_valid_ = %s_.readPorts();'%(field.name, field.name)
+            else:
+                yield '  result &= (%s_valid_ = %s_.readPorts());'%(field.name, field.name)
+
+def generate_write_ports_list(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            validity_field = port_spec[1]
+            if validity_field:
+                yield '  if (%s_valid_) {'%(field.name)
+                yield '    %s_.writePorts();'%(field.name)
+                yield '  }'
+            else:
+                yield '  %s_.writePorts();'%(field.name)
+
+def generate_convert_from_ros_list(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            yield '  %s_.convertFromROS(ros.%s);'%(field.name, field.name)
+            validity_field = port_spec[1]
+            if validity_field:
+                yield '  %s_valid_ = ros.%s;'%(field.name, validity_field)
+
+def generate_convert_to_ros_list(spec):
+    op = 'if ('
+    close_block = False
+    port_spec_dict = get_port_spec_dict(spec)
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            validity_field = port_spec[1]
+            if not validity_field:
+                yield '  %s !%s_valid_'%(op, field.name)
+                op = '||'
+                close_block = True;
+
+    if close_block:
+        yield ') {'
+        yield '  ros = Container_();'
+        yield '}'
+        yield 'else {'
+
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            yield '  if (%s_valid_) {'%(field.name)
+            yield '    %s_.convertToROS(ros.%s);'%(field.name, field.name)
+            yield '  }'
+            yield '  else {'
+            val = default_value(field.base_type)
+            if field.is_array:
+                yield '    ros.%s = %s();'%(field.name, msg_type_to_cpp(field.type))
+            else:
+                yield '    ros.%s = %s(%s);'%(field.name, msg_type_to_cpp(field.type), val)
+            yield '  }'
+            validity_field = port_spec[1]
+            if validity_field:
+                yield '  ros.%s = %s_valid_;'%(validity_field, field.name)
+
+    if close_block:
+        yield '}'
+

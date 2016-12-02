@@ -1,3 +1,11 @@
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package gencpp_subsystem_buffers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+0.6.0 (2016-12-02)
+------------------
+* added support for subsystem buffers of embodied agent
+
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Changelog for package gencpp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
