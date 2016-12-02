@@ -363,7 +363,7 @@ def generate_ports_initializer_list(spec):
     op = ':'
     for field in spec.parsed_fields():
         if field.name in port_spec_dict:
-            yield '    %s %s_(tc, prefix + \"_%s\")'%(op, field.name, field.name)
+            yield '    %s %s_(tc, prefix + std::string(prefix.empty()?"":"_") + \"%s\")'%(op, field.name, field.name)
             op = ','
             yield '    %s %s_valid_(false)'%(op, field.name)
 

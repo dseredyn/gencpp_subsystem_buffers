@@ -117,7 +117,7 @@ public:
 
   @('\n  '.join(gencpp.generate_member_list(spec)))@
 
-    @(spec.short_name)_Ports(RTT::TaskContext &tc, const std::string& prefix="@(spec.short_name)")
+    @(spec.short_name)_Ports(RTT::TaskContext &tc, const std::string& prefix="")
 @('\n    '.join(gencpp.generate_ports_initializer_list(spec)))@
 
     {
