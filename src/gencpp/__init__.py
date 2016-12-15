@@ -343,7 +343,7 @@ def generate_additional_includes(spec):
     for inc in includes:
         yield '#include %s'%(inc)
 
-def generate_member_list(spec):
+def generate_member_list_input(spec):
     port_spec_dict = get_port_spec_dict(spec)
 
     for field in spec.parsed_fields():
@@ -352,20 +352,44 @@ def generate_member_list(spec):
             if port_spec[0] == 'container':
                 if field.is_builtin:
                     raise
-                yield '  %s_Ports<T > %s_;'%(msg_type_to_cpp(field.type)[:-1], field.name)
-                yield '  bool %s_valid_;'%(field.name)
+                yield '  %s_InputPorts %s_;'%(msg_type_to_cpp(field.type)[:-1], field.name)
             elif port_spec[0] == 'port':
-                yield '  interface_ports::Port<T, %s, Container_::_%s_type > %s_;'%(msg_type_to_cpp(port_spec[2]), field.name, field.name)
-                yield '  bool %s_valid_;'%(field.name)
+                yield '  RTT::InputPort<Container_::_%s_type > %s_;'%(field.name, field.name)
+
+def generate_member_list_output(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            if port_spec[0] == 'container':
+                if field.is_builtin:
+                    raise
+                yield '  %s_OutputPorts %s_;'%(msg_type_to_cpp(field.type)[:-1], field.name)
+            elif port_spec[0] == 'port':
+                yield '  RTT::OutputPort<Container_::_%s_type > %s_;'%(field.name, field.name)
 
 def generate_ports_initializer_list(spec):
     port_spec_dict = get_port_spec_dict(spec)
     op = ':'
     for field in spec.parsed_fields():
         if field.name in port_spec_dict:
-            yield '    %s %s_(tc, prefix + std::string(prefix.empty()?"":"_") + \"%s\")'%(op, field.name, field.name)
-            op = ','
-            yield '    %s %s_valid_(false)'%(op, field.name)
+            port_spec = port_spec_dict[field.name]
+            if port_spec[0] == 'container':
+                yield '    %s %s_(tc, prefix + std::string(prefix.empty()?"":"_") + \"%s\")'%(op, field.name, field.name)
+                op = ','
+            else:
+                yield '    %s %s_(prefix + std::string(prefix.empty()?"":"_") + \"%s\")'%(op, field.name, field.name)
+                op = ','
+
+def generate_ports_constructor_code(spec):
+    port_spec_dict = get_port_spec_dict(spec)
+    op = ','
+    for field in spec.parsed_fields():
+        if field.name in port_spec_dict:
+            port_spec = port_spec_dict[field.name]
+            if port_spec[0] == 'port':
+                yield 'tc.addPort(%s_);'%(field.name)
 
 def generate_read_ports_list(spec):
     port_spec_dict = get_port_spec_dict(spec)
@@ -374,9 +398,18 @@ def generate_read_ports_list(spec):
             port_spec = port_spec_dict[field.name]
             validity_field = port_spec[1]
             if validity_field:
-                yield '  %s_valid_ = %s_.readPorts();'%(field.name, field.name)
+                yield 'ros.%s = %s_.read(ros.%s);'%(validity_field, field.name, field.name)
             else:
-                yield '  result &= (%s_valid_ = %s_.readPorts());'%(field.name, field.name)
+                yield 'result &= %s_.read(ros.%s);'%(field.name, field.name)
+
+# TODO: default value
+#            yield '  if (!%s_valid_) {'%(field.name)
+#            val = default_value(field.base_type)
+#            if field.is_array:
+#                yield '    ros.%s = %s();'%(field.name, msg_type_to_cpp(field.type))
+#            else:
+#                yield '    ros.%s = %s(%s);'%(field.name, msg_type_to_cpp(field.type), val)
+#            yield '  }'
 
 def generate_write_ports_list(spec):
     port_spec_dict = get_port_spec_dict(spec)
@@ -385,11 +418,11 @@ def generate_write_ports_list(spec):
             port_spec = port_spec_dict[field.name]
             validity_field = port_spec[1]
             if validity_field:
-                yield '  if (%s_valid_) {'%(field.name)
-                yield '    %s_.writePorts();'%(field.name)
-                yield '  }'
+                yield 'if (ros.%s) {'%(validity_field)
+                yield '    %s_.write(ros.%s);'%(field.name, field.name)
+                yield '}'
             else:
-                yield '  %s_.writePorts();'%(field.name)
+                yield '%s_.write(ros.%s);'%(field.name, field.name)
 
 def generate_convert_from_ros_list(spec):
     port_spec_dict = get_port_spec_dict(spec)

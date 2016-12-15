@@ -43,7 +43,6 @@ cpp_msg_definition = gencpp.escape_message_definition(msg_definition)
 #include <ros/message_operations.h>
 
 #include "rtt/RTT.hpp"
-#include "common_interfaces/interface_ports.h"
 
 @##############################
 @# Includes for dependencies
@@ -110,40 +109,63 @@ struct @(spec.short_name)_
 @# Typedef of template instance using std::allocator
 typedef @(cpp_full_name)<std::allocator<void> > @(spec.short_name);
 
-template <template <typename Type> class T>
-class @(spec.short_name)_Ports : public interface_ports::PortInterface<@(spec.short_name) > {
+class @(spec.short_name)_InputPorts {
 public:
     typedef @(spec.short_name) Container_;
 
-  @('\n  '.join(gencpp.generate_member_list(spec)))@
+//    RTT::InputPort<Container_ > port_;
 
-    @(spec.short_name)_Ports(RTT::TaskContext &tc, const std::string& prefix="")
-@('\n    '.join(gencpp.generate_ports_initializer_list(spec)))@
+  @('\n  '.join(gencpp.generate_member_list_input(spec)))@
+
+
+    @(spec.short_name)_InputPorts(RTT::TaskContext &tc, const std::string& prefix="")
+//        : port_(prefix + std::string(prefix.empty()?"INPORT":"_INPORT"))
+    @('\n    '.join(gencpp.generate_ports_initializer_list(spec)))@
 
     {
+//        tc.addPort(port_);
+        @('\n        '.join(gencpp.generate_ports_constructor_code(spec)))@
+
     }
 
-    virtual bool readPorts() {
+    virtual bool read(@(spec.short_name)& ros) {
+//        if (port_.read(ros)) {
+//            return true;
+//        }
         bool result = true;
-@('\n    '.join(gencpp.generate_read_ports_list(spec)))@
+        @('\n        '.join(gencpp.generate_read_ports_list(spec)))@
 
+        if (!result) {
+            ros = Container_();
+        }
         return result;
     }
+};
 
-    virtual bool writePorts() {
-@('\n    '.join(gencpp.generate_write_ports_list(spec)))@
+class @(spec.short_name)_OutputPorts {
+public:
+    typedef @(spec.short_name) Container_;
+
+//    RTT::OutputPort<Container_ > port_;
+
+  @('\n  '.join(gencpp.generate_member_list_output(spec)))@
+
+
+    @(spec.short_name)_OutputPorts(RTT::TaskContext &tc, const std::string& prefix="")
+//        : port_(prefix + std::string(prefix.empty()?"INPORT":"_INPORT"))
+    @('\n    '.join(gencpp.generate_ports_initializer_list(spec)))@
+
+    {
+//        tc.addPort(port_);
+        @('\n        '.join(gencpp.generate_ports_constructor_code(spec)))@
+
+    }
+
+    virtual bool write(const @(spec.short_name)& ros) {
+//        port_.write(ros);
+        @('\n        '.join(gencpp.generate_write_ports_list(spec)))@
 
         return true;
-    }
-
-    virtual void convertFromROS(const @(spec.short_name)& ros) {
-@('\n    '.join(gencpp.generate_convert_from_ros_list(spec)))@
-
-    }
-
-    virtual void convertToROS(@(spec.short_name)& ros) {
-  @('\n    '.join(gencpp.generate_convert_to_ros_list(spec)))@
-
     }
 };
 
